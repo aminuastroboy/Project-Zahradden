@@ -75,9 +75,7 @@ if uploaded_file:
     st.success("✅ Step 7: Compressed file created")
 
     # Step 8: Show Results
-uploaded_file.seek(0, os.SEEK_END)
-orig_size = uploaded_file.tell()
-uploaded_file.seek(0)
+file_size = len(uploaded_file.getbuffer())
 
 comp_size = os.path.getsize(output_file)
 ratio = (1 - comp_size / orig_size) * 100
