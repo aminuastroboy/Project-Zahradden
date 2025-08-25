@@ -59,8 +59,8 @@ if uploaded_file:
     # ✅ Safe way to get file size
     file_size_kb = len(uploaded_file.getbuffer()) / 1024
 
-    # Keep color image (instead of grayscale)
-    img = Image.open(uploaded_file).convert("RGB")
+    # Ignore image color (grayscale)
+    img = Image.open(uploaded_file).convert("L")
 
     st.image(img, caption="Original Image", use_column_width=True)
 
