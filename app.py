@@ -1,89 +1,94 @@
 import streamlit as st
 from PIL import Image
-import heapq, pickle, os
+import heapq
+from collections import defaultdict
+import io
 
-# Node class for Huffman tree
+# -------------------------------
+# Huffman Coding Helper Classes
+# -------------------------------
 class Node:
-    def __init__(self, value, freq, left=None, right=None):
-        self.value = value
+    def __init__(self, freq, symbol, left=None, right=None):
         self.freq = freq
+        self.symbol = symbol
         self.left = left
         self.right = right
-    def __lt__(self, other):
-        return self.freq < other.freq
+        self.huff = ''
 
-def build_codes(node, prefix="", codes={}):
-    if node is None:
-        return
-    if node.value is not None:
-        codes[node.value] = prefix
-    build_codes(node.left, prefix + "0", codes)
-    build_codes(node.right, prefix + "1", codes)
+    def __lt__(self, nxt):
+        return self.freq < nxt.freq
+
+
+def build_huffman_tree(frequencies):
+    heap = [Node(freq, sym) for sym, freq in frequencies.items()]
+    heapq.heapify(heap)
+
+    while len(heap) > 1:
+        left = heapq.heappop(heap)
+        right = heapq.heappop(heap)
+        left.huff = "0"
+        right.huff = "1"
+        new_node = Node(left.freq + right.freq, None, left, right)
+        heapq.heappush(heap, new_node)
+
+    return heap[0]
+
+
+def generate_codes(node, val="", codes={}):
+    newVal = val + node.huff
+    if node.left:
+        generate_codes(node.left, newVal, codes)
+    if node.right:
+        generate_codes(node.right, newVal, codes)
+    if node.symbol is not None:
+        codes[node.symbol] = newVal
     return codes
 
-st.set_page_config(page_title="Huffman Image Compressor | Project By Zahraddeen", layout="centered")
-st.title("📦 Huffman Image Compressor | Project By Zahraddeen")
-st.write("Upload an image and see Huffman coding compression in action!")
 
-uploaded_file = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"])
+# -------------------------------
+# Streamlit Web App
+# -------------------------------
+st.set_page_config(page_title="Project Zahraddeen | Huffman Image Compressor", page_icon="🗜️")
+
+st.title("🗜️ Project Zahraddeen | Huffman Image Compressor")
+st.write("Upload an image and compress it using Huffman Coding.")
+
+uploaded_file = st.file_uploader("Choose an image", type=["png", "jpg", "jpeg"])
 
 if uploaded_file:
-    # Step 1: Load Image
-    img = Image.open(uploaded_file).convert("L")  # grayscale
-    st.image(img, caption="Uploaded Image", use_column_width=True)
-    st.success("✅ Step 1: Image loaded successfully")
+    # ✅ Safe way to get file size
+    file_size_kb = len(uploaded_file.getbuffer()) / 1024
 
-    # Step 2: Build Frequency Table
-    flat_data = list(img.getdata())
-    freq = {}
-    for pixel in flat_data:
-        freq[pixel] = freq.get(pixel, 0) + 1
-    st.success("✅ Step 2: Frequency table built")
+    # Keep color image (instead of grayscale)
+    img = Image.open(uploaded_file).convert("RGB")
 
-    # Step 3: Build Huffman Tree
-    heap = [Node(val, f) for val, f in freq.items()]
-    heapq.heapify(heap)
-    while len(heap) > 1:
-        n1 = heapq.heappop(heap)
-        n2 = heapq.heappop(heap)
-        merged = Node(None, n1.freq + n2.freq, n1, n2)
-        heapq.heappush(heap, merged)
-    root = heap[0]
-    st.success("✅ Step 3: Huffman tree created")
+    st.image(img, caption="Original Image", use_column_width=True)
 
-    # Step 4: Generate Codes
-    codes = build_codes(root, "")
-    st.success("✅ Step 4: Huffman codes generated")
+    # Convert image to byte array
+    img_bytes = img.tobytes()
 
-    # Step 5: Encode Pixels
-    encoded_data = "".join(codes[p] for p in flat_data)
-    st.success("✅ Step 5: Image pixels encoded")
+    # Frequency dictionary
+    frequency = defaultdict(int)
+    for byte in img_bytes:
+        frequency[byte] += 1
 
-    # Step 6: Pack Bits into Bytes
-    extra = (8 - len(encoded_data) % 8) % 8
-    encoded_data = f"{extra:08b}" + encoded_data + "0" * extra
-    b = bytearray()
-    for i in range(0, len(encoded_data), 8):
-        byte = encoded_data[i:i+8]
-        b.append(int(byte, 2))
-    st.success("✅ Step 6: Data packed into bytes")
+    # Build Huffman tree and codes
+    huffman_tree = build_huffman_tree(frequency)
+    huffman_codes = generate_codes(huffman_tree)
 
-    # Step 7: Save Compressed File
-    output_file = "compressed.huff"
-    with open(output_file, "wb") as f:
-        pickle.dump((img.size, freq, b), f)
-    st.success("✅ Step 7: Compressed file created")
+    # Encode
+    encoded_data = "".join([huffman_codes[byte] for byte in img_bytes])
 
-    # Step 8: Show Results
-file_size = len(uploaded_file.getbuffer())
+    # Estimate compressed size (in bits → bytes)
+    compressed_size_kb = len(encoded_data) / 8 / 1024
 
-comp_size = os.path.getsize(output_file)
-ratio = (1 - comp_size / orig_size) * 100
+    st.subheader("📊 Compression Details")
+    st.write(f"📂 Original Size: **{file_size_kb:.2f} KB**")
+    st.write(f"🗜️ Compressed Size: **{compressed_size_kb:.2f} KB**")
+    st.write(f"⚡ Compression Ratio: **{(compressed_size_kb/file_size_kb):.2f}x smaller**")
 
-st.subheader("📊 Compression Results")
-st.write(f"**Original Size:** {orig_size/1024:.2f} KB")
-st.write(f"**Compressed Size:** {comp_size/1024:.2f} KB")
-st.write(f"**Saved:** {ratio:.2f}%")
+    # Offer download of encoded file
+    compressed_bytes = int(encoded_data, 2).to_bytes((len(encoded_data) + 7) // 8, byteorder="big")
+    st.download_button("⬇️ Download Compressed File", compressed_bytes, file_name="compressed.huff")
 
-with open(output_file, "rb") as f:
-        st.download_button("⬇️ Download Compressed File", f, file_name="compressed.huff")
+    st.success("✅ Compression completed successfully!")
