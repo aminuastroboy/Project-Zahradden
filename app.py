@@ -62,7 +62,7 @@ if uploaded_file:
     # Ignore image color (grayscale)
     img = Image.open(uploaded_file).convert("L")
 
-    st.image(img, caption="Original Image", use_column_width=True)
+    st.image(img, caption="Original Image", use_container_width=True)
 
     # Convert image to byte array
     img_bytes = img.tobytes()
