@@ -29,7 +29,7 @@ uploaded_file = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"])
 
 if uploaded_file:
     # Step 1: Load Image
-    img = Image.open(uploaded_file).convert("RGB")  # keep color
+    img = Image.open(uploaded_file).convert("L")  # grayscale
     st.image(img, caption="Uploaded Image", use_column_width=True)
     st.success("✅ Step 1: Image loaded successfully")
 
