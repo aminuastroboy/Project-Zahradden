@@ -1,94 +1,115 @@
 import streamlit as st
+from io import BytesIO
 from PIL import Image
 import heapq
-from collections import defaultdict
-import io
+import os
 
-# -------------------------------
-# Huffman Coding Helper Classes
-# -------------------------------
+# ----------------------
+# HUFFMAN ENCODING LOGIC
+# ----------------------
 class Node:
-    def __init__(self, freq, symbol, left=None, right=None):
+    def __init__(self, char, freq):
+        self.char = char
         self.freq = freq
-        self.symbol = symbol
-        self.left = left
-        self.right = right
-        self.huff = ''
+        self.left = None
+        self.right = None
 
-    def __lt__(self, nxt):
-        return self.freq < nxt.freq
+    def __lt__(self, other):
+        return self.freq < other.freq
 
 
-def build_huffman_tree(frequencies):
-    heap = [Node(freq, sym) for sym, freq in frequencies.items()]
+def build_huffman_tree(data):
+    freq = {}
+    for byte in data:
+        freq[byte] = freq.get(byte, 0) + 1
+
+    heap = [Node(byte, f) for byte, f in freq.items()]
     heapq.heapify(heap)
 
     while len(heap) > 1:
         left = heapq.heappop(heap)
         right = heapq.heappop(heap)
-        left.huff = "0"
-        right.huff = "1"
-        new_node = Node(left.freq + right.freq, None, left, right)
-        heapq.heappush(heap, new_node)
+        merged = Node(None, left.freq + right.freq)
+        merged.left = left
+        merged.right = right
+        heapq.heappush(heap, merged)
 
     return heap[0]
 
 
-def generate_codes(node, val="", codes={}):
-    newVal = val + node.huff
-    if node.left:
-        generate_codes(node.left, newVal, codes)
-    if node.right:
-        generate_codes(node.right, newVal, codes)
-    if node.symbol is not None:
-        codes[node.symbol] = newVal
+def build_codes(root):
+    codes = {}
+
+    def generate_codes(node, current_code):
+        if node is None:
+            return
+        if node.char is not None:
+            codes[node.char] = current_code
+        generate_codes(node.left, current_code + "0")
+        generate_codes(node.right, current_code + "1")
+
+    generate_codes(root, "")
     return codes
 
 
-# -------------------------------
-# Streamlit Web App
-# -------------------------------
-st.set_page_config(page_title="Project Zahraddeen | Huffman Image Compressor", page_icon="🗜️")
+def huffman_compress(data):
+    root = build_huffman_tree(data)
+    codes = build_codes(root)
 
-st.title("🗜️ Project Zahraddeen | Huffman Image Compressor")
-st.write("Upload an image and compress it using Huffman Coding.")
+    encoded_data = "".join(codes[byte] for byte in data)
 
-uploaded_file = st.file_uploader("Choose an image", type=["png", "jpg", "jpeg"])
+    # Convert bits to bytes
+    padding = 8 - len(encoded_data) % 8
+    encoded_data += "0" * padding
+    padded_info = "{0:08b}".format(padding)
+
+    b = bytearray()
+    b.append(int(padded_info, 2))
+    for i in range(0, len(encoded_data), 8):
+        byte = encoded_data[i:i+8]
+        b.append(int(byte, 2))
+
+    return bytes(b), root
+
+
+# ----------------------
+# STREAMLIT APP
+# ----------------------
+st.markdown(
+    "<h3 style='text-align: center; font-size:22px; font-weight:bold;'>📦 Project Zahraddeen | Huffman Image Compressor</h3>",
+    unsafe_allow_html=True
+)
+
+uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png", "bmp"])
 
 if uploaded_file:
-    # ✅ Safe way to get file size
-    file_size_kb = len(uploaded_file.getbuffer()) / 1024
+    # Load and display image
+    img = Image.open(uploaded_file).convert("RGB")
+    st.image(img, caption="Uploaded Image", use_container_width=True)
 
-    # Ignore image color (grayscale)
-    img = Image.open(uploaded_file).convert("L")
+    # Convert to BMP (uncompressed raw format)
+    bmp_buffer = BytesIO()
+    img.save(bmp_buffer, format="BMP")
+    bmp_data = bmp_buffer.getvalue()
 
-    st.image(img, caption="Original Image", use_container_width=True)
+    # Compress BMP data
+    compressed_data, tree = huffman_compress(bmp_data)
 
-    # Convert image to byte array
-    img_bytes = img.tobytes()
+    # Size comparison
+    original_size = len(bmp_data) / 1024  # KB
+    compressed_size = len(compressed_data) / 1024  # KB
+    ratio = compressed_size / original_size * 100
 
-    # Frequency dictionary
-    frequency = defaultdict(int)
-    for byte in img_bytes:
-        frequency[byte] += 1
+    st.subheader("📊 Compression Results")
+    st.write(f"**Original Size:** {original_size:.2f} KB")
+    st.write(f"**Compressed Size:** {compressed_size:.2f} KB")
+    st.write(f"**Compression Ratio:** {ratio:.2f}%")
 
-    # Build Huffman tree and codes
-    huffman_tree = build_huffman_tree(frequency)
-    huffman_codes = generate_codes(huffman_tree)
-
-    # Encode
-    encoded_data = "".join([huffman_codes[byte] for byte in img_bytes])
-
-    # Estimate compressed size (in bits → bytes)
-    compressed_size_kb = len(encoded_data) / 8 / 1024
-
-    st.subheader("📊 Compression Details")
-    st.write(f"📂 Original Size: **{file_size_kb:.2f} KB**")
-    st.write(f"🗜️ Compressed Size: **{compressed_size_kb:.2f} KB**")
-    st.write(f"⚡ Compression Ratio: **{(compressed_size_kb/file_size_kb):.2f}x smaller**")
-
-    # Offer download of encoded file
-    compressed_bytes = int(encoded_data, 2).to_bytes((len(encoded_data) + 7) // 8, byteorder="big")
-    st.download_button("⬇️ Download Compressed File", compressed_bytes, file_name="compressed.huff")
-
-    st.success("✅ Compression completed successfully!")
+    # Save compressed file
+    compressed_filename = os.path.splitext(uploaded_file.name)[0] + "_compressed.bin"
+    st.download_button(
+        label="Download Compressed File",
+        data=compressed_data,
+        file_name=compressed_filename,
+        mime="application/octet-stream"
+    )
