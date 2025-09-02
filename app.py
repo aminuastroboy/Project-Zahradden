@@ -201,6 +201,6 @@ st.markdown("""
     <b>Faculty:</b> COMPUTING <br/>
     <b>Department:</b> COMPUTER SCIENCE <br/>
     <b>Level:</b> 400L <br/>
-    <b>Contact:</b> dokahaya2ddeen@gmail.com | 09031641701
+    <b>Contact:</b> dokazahraddeentanko@gmail.com | 09031641701
 </div>
 """, unsafe_allow_html=True)
